@@ -28,7 +28,7 @@ class StartGameRequest(BaseModel):
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
 
-# Создание лобби
+# Создание лобби (HTTP)
 @app.post("/create_lobby")
 async def create_lobby(request: LobbyCreateRequest):
     username = request.username
@@ -52,10 +52,11 @@ async def create_lobby(request: LobbyCreateRequest):
     return {
         "lobby_id": lobby_id,
         "creator": username,
-        "players": [username]
+        "players": [username],
+        "status": "waiting"  # Добавили status
     }
 
-# Присоединение к лобби
+# Присоединение к лобби (HTTP)
 @app.post("/join_lobby")
 async def join_lobby(request: LobbyJoinRequest):
     creator = request.creator
@@ -87,10 +88,11 @@ async def join_lobby(request: LobbyJoinRequest):
     return {
         "lobby_id": lobby["lobby_id"],
         "creator": creator,
-        "players": lobby["players"]
+        "players": lobby["players"],
+        "status": lobby["status"]  # Добавили status
     }
 
-# Запуск игры
+# Запуск игры (HTTP)
 @app.post("/start_game")
 async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
@@ -157,7 +159,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({
                     "lobby_id": lobby_id,
                     "creator": username,
-                    "players": [username]
+                    "players": [username],
+                    "status": "waiting"  # Добавили status
                 })
             
             elif action == "join":
