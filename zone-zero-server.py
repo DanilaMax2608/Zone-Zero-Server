@@ -44,7 +44,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "status": "waiting",
         "max_players": 4,
         "scores": {username: 0},
-        "seed": 0  
+        "seed": 0,
+        "positions": {}  
     }
     clients[lobby_id] = []
     
@@ -75,6 +76,7 @@ async def join_lobby(request: LobbyJoinRequest):
     
     lobby["players"].append(username)
     lobby["scores"][username] = 0
+    lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0} 
     
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
@@ -154,7 +156,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     "status": "waiting",
                     "max_players": 4,
                     "scores": {username: 0},
-                    "seed": 0
+                    "seed": 0,
+                    "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}} 
                 }
                 clients[lobby_id] = [websocket]
                 
@@ -188,6 +191,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 lobby["players"].append(username)
                 lobby["scores"][username] = 0
+                lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
                 clients[lobby["lobby_id"]].append(websocket)
                 
                 await notify_clients(lobby["lobby_id"], {
