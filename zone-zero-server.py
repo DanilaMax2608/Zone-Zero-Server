@@ -44,7 +44,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "status": "waiting",
         "max_players": 4,
         "scores": {username: 0},
-        "seed": 0  
+        "seed": 0,
+        "positions": {}  # Инициализация словаря позиций
     }
     clients[lobby_id] = []
     
@@ -154,7 +155,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     "status": "waiting",
                     "max_players": 4,
                     "scores": {username: 0},
-                    "seed": 0
+                    "seed": 0,
+                    "positions": {}  # Инициализация словаря позиций
                 }
                 clients[lobby_id] = [websocket]
                 
