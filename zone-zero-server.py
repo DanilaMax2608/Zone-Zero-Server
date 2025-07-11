@@ -45,7 +45,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "max_players": 4,
         "scores": {username: 0},
         "seed": 0,
-        "positions": {}  # Инициализация словаря позиций
+        "positions": {}
     }
     clients[lobby_id] = []
     
@@ -125,18 +125,21 @@ async def start_game(request: StartGameRequest):
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    client_host = websocket.client.host
+    print(f"New connection from {client_host}")
     
     try:
         while True:
             try:
                 data = await websocket.receive_text()
-                print(f"Received: {data}")  # Лог полученного сообщения
+                print(f"Received from {client_host}: {data}")  # Лог полученного сообщения
             except WebSocketDisconnect:
                 handle_disconnect(websocket)
                 break
                 
             message = json.loads(data)
             action = message.get("action")
+            print(f"Parsed action: {action}")  # Лог действия
             
             if action == "create":
                 username = message.get("username")
@@ -157,7 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "max_players": 4,
                     "scores": {username: 0},
                     "seed": 0,
-                    "positions": {}  # Инициализация словаря позиций
+                    "positions": {}
                 }
                 clients[lobby_id] = [websocket]
                 
@@ -235,6 +238,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 lobby_id = message.get("lobby_id")
                 position = message.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
                 
+                print(f"Processing update_position: username={username}, lobby_id={lobby_id}, position={position}")  # Лог обработки
+                
                 lobby = None
                 for c, l in lobbies.items():
                     if l["lobby_id"] == lobby_id:
@@ -254,7 +259,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "y": float(position["y"]),
                     "z": float(position["z"])
                 }
-                print(f"Updating position for {username} in lobby {lobby_id}: {lobby['positions'][username]}")  # Лог обновления
+                print(f"Updated position for {username} in lobby {lobby_id}: {lobby['positions'][username]}")  # Лог обновления
                 
                 await notify_clients(lobby_id, {
                     "action": "update_position",
@@ -335,9 +340,10 @@ def handle_disconnect(websocket: WebSocket):
 async def notify_clients(lobby_id: str, message: dict, exclude_sender=None):
     if lobby_id in clients:
         for client in list(clients[lobby_id]):
-            if client != exclude_sender:  # Исключаем отправителя, если указан
+            if client != exclude_sender:
                 try:
                     print(f"Sending to {client.client.host}: {message}")  # Лог отправки
                     await client.send_json(message)
-                except:
+                except Exception as e:
+                    print(f"Failed to send to {client.client.host}: {e}")
                     clients[lobby_id].remove(client)
