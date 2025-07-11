@@ -130,6 +130,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
+                print(f"Server received: {data}")  
             except WebSocketDisconnect:
                 handle_disconnect(websocket)
                 break
@@ -233,7 +234,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 username = message.get("username")
                 lobby_id = message.get("lobby_id")
                 position = message.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
-                
+                print(f"Server processing update_position for {username} at {position}")  
                 lobby = None
                 for c, l in lobbies.items():
                     if l["lobby_id"] == lobby_id:
@@ -254,6 +255,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "z": float(position["z"])
                 }
                 
+                print(f"Server notifying clients of position update for {username}: {lobby['positions'][username]}") 
                 await notify_clients(lobby_id, {
                     "action": "update_position",
                     "lobby_id": lobby_id,
@@ -334,6 +336,8 @@ async def notify_clients(lobby_id: str, message: dict):
     if lobby_id in clients:
         for client in list(clients[lobby_id]):
             try:
+                print(f"Server sending to client: {message}")  
                 await client.send_json(message)
-            except:
+            except Exception as e:
+                print(f"Failed to send to client: {e}")
                 clients[lobby_id].remove(client)
