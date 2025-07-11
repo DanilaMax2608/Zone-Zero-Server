@@ -45,7 +45,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "max_players": 4,
         "scores": {username: 0},
         "seed": 0,
-        "positions": {}  
+        "positions": {}  # Инициализация словаря позиций
     }
     clients[lobby_id] = []
     
@@ -130,6 +130,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
+                print(f"Received: {data}")  # Лог полученного сообщения
             except WebSocketDisconnect:
                 handle_disconnect(websocket)
                 break
@@ -156,7 +157,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "max_players": 4,
                     "scores": {username: 0},
                     "seed": 0,
-                    "positions": {} 
+                    "positions": {}  # Инициализация словаря позиций
                 }
                 clients[lobby_id] = [websocket]
                 
@@ -253,13 +254,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     "y": float(position["y"]),
                     "z": float(position["z"])
                 }
+                print(f"Updating position for {username} in lobby {lobby_id}: {lobby['positions'][username]}")  # Лог обновления
                 
                 await notify_clients(lobby_id, {
                     "action": "update_position",
                     "lobby_id": lobby_id,
                     "username": username,
                     "position": lobby["positions"][username]
-                })
+                }, exclude_sender=websocket)
             
             elif action == "leave":
                 lobby_id = message.get("lobby_id")
@@ -330,10 +332,12 @@ def handle_disconnect(websocket: WebSocket):
                                 })
             break
 
-async def notify_clients(lobby_id: str, message: dict):
+async def notify_clients(lobby_id: str, message: dict, exclude_sender=None):
     if lobby_id in clients:
         for client in list(clients[lobby_id]):
-            try:
-                await client.send_json(message)
-            except:
-                clients[lobby_id].remove(client)
+            if client != exclude_sender:  # Исключаем отправителя, если указан
+                try:
+                    print(f"Sending to {client.client.host}: {message}")  # Лог отправки
+                    await client.send_json(message)
+                except:
+                    clients[lobby_id].remove(client)
