@@ -228,44 +228,40 @@ async def websocket_endpoint(websocket: WebSocket):
                     "status": "started",
                     "seed": seed
                 })
-
+            
             elif action == "update_position":
                 username = message.get("username")
                 lobby_id = message.get("lobby_id")
                 position = message.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
-    
+                
                 lobby = None
                 for c, l in lobbies.items():
                     if l["lobby_id"] == lobby_id:
                         lobby = l
                         break
-    
+                
                 if not lobby:
                     await websocket.send_json({"error": "Lobby not found"})
                     continue
-    
+                
                 if username not in lobby["players"]:
                     await websocket.send_json({"error": "Player not in lobby"})
                     continue
-    
-                # Обновляем позицию только если она изменилась
-                current_pos = lobby["positions"].get(username, {})
-                new_pos = {
+                
+                # Сохраняем позицию
+                lobby["positions"][username] = {
                     "x": float(position["x"]),
                     "y": float(position["y"]),
                     "z": float(position["z"])
                 }
-    
-                if current_pos != new_pos:
-                    lobby["positions"][username] = new_pos
-                    await notify_clients(lobby_id, {
-                        "action": "position_update",
-                        "lobby_id": lobby_id,
-                        "username": username,
-                        "position": new_pos,
-                        "timestamp": time.time()  # Добавляем метку времени
-                    })
-
+                
+                # Пересылаем обновление всем клиентам в лобби
+                await notify_clients(lobby_id, {
+                    "action": "update_position",
+                    "lobby_id": lobby_id,
+                    "username": username,
+                    "position": lobby["positions"][username]
+                })
             
             elif action == "leave":
                 lobby_id = message.get("lobby_id")
