@@ -77,6 +77,7 @@ async def join_lobby(request: LobbyJoinRequest):
     lobby["scores"][username] = 0
     
     await notify_clients(lobby["lobby_id"], {
+        "action": "update_players",
         "lobby_id": lobby["lobby_id"],
         "players": lobby["players"],
         "status": lobby["status"]
@@ -113,6 +114,7 @@ async def start_game(request: StartGameRequest):
     lobby["seed"] = seed  
     
     await notify_clients(lobby_id, {
+        "action": "game_started",
         "lobby_id": lobby_id,
         "players": lobby["players"],
         "status": "started",
@@ -124,13 +126,15 @@ async def start_game(request: StartGameRequest):
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    current_lobby_id = None
     
     try:
         while True:
             try:
                 data = await websocket.receive_text()
             except WebSocketDisconnect:
-                handle_disconnect(websocket)
+                if current_lobby_id:
+                    await handle_disconnect(websocket, current_lobby_id)
                 break
                 
             message = json.loads(data)
@@ -157,9 +161,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     "seed": 0
                 }
                 clients[lobby_id] = [websocket]
+                current_lobby_id = lobby_id
                 
                 await websocket.send_json({
-                    "lobby_id": str(lobby_id),
+                    "action": "lobby_created",
+                    "lobby_id": lobby_id,
                     "creator": username,
                     "players": [username],
                     "status": "waiting"
@@ -189,9 +195,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 lobby["players"].append(username)
                 lobby["scores"][username] = 0
                 clients[lobby["lobby_id"]].append(websocket)
+                current_lobby_id = lobby["lobby_id"]
                 
                 await notify_clients(lobby["lobby_id"], {
-                    "lobby_id": str(lobby["lobby_id"]),
+                    "action": "player_joined",
+                    "lobby_id": lobby["lobby_id"],
                     "players": lobby["players"],
                     "status": lobby["status"]
                 })
@@ -221,7 +229,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 lobby["seed"] = seed
                 
                 await notify_clients(lobby_id, {
-                    "lobby_id": str(lobby_id),
+                    "action": "game_started",
+                    "lobby_id": lobby_id,
                     "players": lobby["players"],
                     "status": "started",
                     "seed": seed
@@ -244,11 +253,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 
                 if username == lobby["creator"]:
+                    await notify_clients(lobby_id, {
+                        "action": "lobby_closed",
+                        "lobby_id": lobby_id
+                    })
                     if lobby_id in clients:
                         for client in clients[lobby_id]:
                             if client != websocket:
                                 try:
-                                    await client.send_json({"error": "Lobby closed by creator"})
                                     await client.close()
                                 except:
                                     pass
@@ -263,10 +275,12 @@ async def websocket_endpoint(websocket: WebSocket):
                             if websocket in clients[lobby_id]:
                                 clients[lobby_id].remove(websocket)
                         await notify_clients(lobby_id, {
+                            "action": "player_left",
                             "lobby_id": lobby_id,
                             "players": lobby["players"],
                             "status": lobby["status"]
                         })
+            
             elif action == "position":
                 lobby_id = message.get("lobby_id")
                 username = message.get("username")
@@ -275,35 +289,46 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not lobby_id or not username or not position:
                     continue
                     
+                # Рассылаем позицию всем игрокам в лобби
                 await notify_clients(lobby_id, {
-                    "action": "position",
+                    "action": "position_update",
                     "username": username,
                     "position": position
                 })
     
     except WebSocketDisconnect:
-        handle_disconnect(websocket)
+        if current_lobby_id:
+            await handle_disconnect(websocket, current_lobby_id)
 
-def handle_disconnect(websocket: WebSocket):
-    for lobby_id, client_list in list(clients.items()):
-        if websocket in client_list:
-            client_list.remove(websocket)
-            for creator, lobby in list(lobbies.items()):
-                if lobby["lobby_id"] == lobby_id:
-                    if not client_list:
-                        del lobbies[creator]
-                        print(f"Lobby {lobby_id} deleted due to no clients")
-                    else:
-                        for username in list(lobby["players"]):
-                            if username != lobby["creator"]:
-                                lobby["players"].remove(username)
-                                del lobby["scores"][username]
-                                notify_clients(lobby_id, {
-                                    "lobby_id": lobby_id,
-                                    "players": lobby["players"],
-                                    "status": lobby["status"]
-                                })
-            break
+async def handle_disconnect(websocket: WebSocket, lobby_id: str):
+    if lobby_id in clients and websocket in clients[lobby_id]:
+        clients[lobby_id].remove(websocket)
+        
+        for creator, lobby in list(lobbies.items()):
+            if lobby["lobby_id"] == lobby_id:
+                if not clients[lobby_id]:
+                    del lobbies[creator]
+                    del clients[lobby_id]
+                    print(f"Lobby {lobby_id} deleted due to no clients")
+                else:
+                    # Находим username, который отключился
+                    disconnected_username = None
+                    for username in lobby["players"]:
+                        if username != lobby["creator"] and username not in [p for p in lobby["players"] if p != lobby["creator"]]:
+                            disconnected_username = username
+                            break
+                    
+                    if disconnected_username:
+                        lobby["players"].remove(disconnected_username)
+                        if disconnected_username in lobby["scores"]:
+                            del lobby["scores"][disconnected_username]
+                        await notify_clients(lobby_id, {
+                            "action": "player_left",
+                            "lobby_id": lobby_id,
+                            "players": lobby["players"],
+                            "status": lobby["status"]
+                        })
+                break
 
 async def notify_clients(lobby_id: str, message: dict):
     if lobby_id in clients:
@@ -311,4 +336,5 @@ async def notify_clients(lobby_id: str, message: dict):
             try:
                 await client.send_json(message)
             except:
-                clients[lobby_id].remove(client)
+                if lobby_id in clients and client in clients[lobby_id]:
+                    clients[lobby_id].remove(client)
