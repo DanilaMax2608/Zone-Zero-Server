@@ -268,30 +268,16 @@ async def websocket_endpoint(websocket: WebSocket):
                             "status": lobby["status"]
                         })
             
-            elif action == "move":
+            elif action == "update_position":
+                lobby_id = message.get("lobby_id")
                 username = message.get("username")
                 position = message.get("position")
-                if not username or not position:
-                    await websocket.send_json({"error": "Invalid move message"})
-                    continue
-                
-                lobby_id = None
-                for lid, ws_list in clients.items():
-                    if websocket in ws_list:
-                        lobby_id = lid
-                        break
-                
-                if not lobby_id:
-                    await websocket.send_json({"error": "Not in any lobby"})
-                    continue
-                
-                for client in clients[lobby_id]:
-                    if client != websocket:
-                        await client.send_json({
-                            "action": "update_position",
-                            "username": username,
-                            "position": position
-                        })
+                if lobby_id in clients and position is not None:
+                    await notify_clients(lobby_id, {
+                        "action": "player_moved",
+                        "username": username,
+                        "position": position
+                    })
     
     except WebSocketDisconnect:
         handle_disconnect(websocket)
