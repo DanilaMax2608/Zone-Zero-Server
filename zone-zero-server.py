@@ -267,6 +267,19 @@ async def websocket_endpoint(websocket: WebSocket):
                             "players": lobby["players"],
                             "status": lobby["status"]
                         })
+            elif action == "position":
+                lobby_id = message.get("lobby_id")
+                username = message.get("username")
+                position = message.get("position")
+                
+                if not lobby_id or not username or not position:
+                    continue
+                    
+                await notify_clients(lobby_id, {
+                    "action": "position",
+                    "username": username,
+                    "position": position
+                })
     
     except WebSocketDisconnect:
         handle_disconnect(websocket)
