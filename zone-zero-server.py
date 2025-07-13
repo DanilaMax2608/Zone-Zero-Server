@@ -267,17 +267,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             "players": lobby["players"],
                             "status": lobby["status"]
                         })
-            
-            elif action == "update_position":
-                lobby_id = message.get("lobby_id")
-                username = message.get("username")
-                position = message.get("position")
-                if lobby_id in clients and position is not None:
-                    await notify_clients(lobby_id, {
-                        "action": "player_moved",
-                        "username": username,
-                        "position": position
-                    })
     
     except WebSocketDisconnect:
         handle_disconnect(websocket)
