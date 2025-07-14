@@ -24,6 +24,13 @@ class StartGameRequest(BaseModel):
     username: str
     seed: int = 0
 
+class PositionUpdate(BaseModel):
+    lobby_id: str
+    username: str
+    x: float
+    y: float
+    z: float
+
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
 
@@ -44,6 +51,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "status": "waiting",
         "max_players": 4,
         "scores": {username: 0},
+        "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "seed": 0
     }
     clients[lobby_id] = []
@@ -75,6 +83,7 @@ async def join_lobby(request: LobbyJoinRequest):
     
     lobby["players"].append(username)
     lobby["scores"][username] = 0
+    lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
     
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
@@ -154,6 +163,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "status": "waiting",
                     "max_players": 4,
                     "scores": {username: 0},
+                    "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                     "seed": 0
                 }
                 clients[lobby_id] = [websocket]
@@ -188,6 +198,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 lobby["players"].append(username)
                 lobby["scores"][username] = 0
+                lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
                 clients[lobby["lobby_id"]].append(websocket)
                 
                 await notify_clients(lobby["lobby_id"], {
@@ -227,6 +238,37 @@ async def websocket_endpoint(websocket: WebSocket):
                     "seed": seed
                 })
             
+            elif action == "update_position":
+                lobby_id = message.get("lobby_id")
+                username = message.get("username")
+                x = message.get("x")
+                y = message.get("y")
+                z = message.get("z")
+                
+                lobby = None
+                for c, l in lobbies.items():
+                    if l["lobby_id"] == lobby_id:
+                        lobby = l
+                        break
+                
+                if not lobby:
+                    await websocket.send_json({"error": "Lobby not found"})
+                    continue
+                
+                if username not in lobby["players"]:
+                    await websocket.send_json({"error": "You are not in this lobby"})
+                    continue
+                
+                lobby["positions"][username] = {"x": x, "y": y, "z": z}
+                
+                await notify_clients(lobby_id, {
+                    "action": "position_update",
+                    "username": username,
+                    "x": x,
+                    "y": y,
+                    "z": z
+                })
+            
             elif action == "leave":
                 lobby_id = message.get("lobby_id")
                 username = message.get("username")
@@ -259,6 +301,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if username in lobby["players"]:
                         lobby["players"].remove(username)
                         del lobby["scores"][username]
+                        del lobby["positions"][username]
                         if lobby_id in clients:
                             if websocket in clients[lobby_id]:
                                 clients[lobby_id].remove(websocket)
@@ -285,6 +328,7 @@ def handle_disconnect(websocket: WebSocket):
                             if username != lobby["creator"]:
                                 lobby["players"].remove(username)
                                 del lobby["scores"][username]
+                                del lobby["positions"][username]
                                 notify_clients(lobby_id, {
                                     "lobby_id": lobby_id,
                                     "players": lobby["players"],
