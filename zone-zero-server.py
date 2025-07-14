@@ -313,6 +313,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                 
                 elif action == "ping":
+                    username = message.get("username", f"Unknown_{client_ip}")
                     await websocket.send_json({"action": "pong"})
                     print(f"Ping received from {username}, sent pong")
             
