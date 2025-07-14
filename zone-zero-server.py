@@ -136,15 +136,16 @@ async def start_game(request: StartGameRequest):
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print(f"WebSocket client connected: {websocket.client}")
+    client_info = f"{websocket.client.host}:{websocket.client.port}"
+    print(f"WebSocket client connected: {client_info}")
     
     try:
         while True:
             try:
                 data = await websocket.receive_text()
-                print(f"Received message: {data}")
+                print(f"Received message from {client_info}: {data}")
             except WebSocketDisconnect:
-                print(f"WebSocket client disconnected: {websocket.client}")
+                print(f"WebSocket client disconnected: {client_info}")
                 handle_disconnect(websocket)
                 break
                 
@@ -279,6 +280,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     "z": z
                 })
             
+            elif action == "ping":
+                await websocket.send_json({"action": "pong"})
+                print(f"Received ping from {client_info}, sent pong")
+            
             elif action == "leave":
                 lobby_id = message.get("lobby_id")
                 username = message.get("username")
@@ -323,7 +328,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         })
     
     except WebSocketDisconnect:
-        print(f"WebSocket client disconnected unexpectedly: {websocket.client}")
+        print(f"WebSocket client disconnected unexpectedly: {client_info}")
         handle_disconnect(websocket)
 
 def handle_disconnect(websocket: WebSocket):
