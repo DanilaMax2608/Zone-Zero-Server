@@ -27,6 +27,50 @@ class StartGameRequest(BaseModel):
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
 
+def generate_items(seed: int, number_of_items: int = 10, room_count: int = 15, room_size: float = 30.0, room_boundary_offset: float = 1.0) -> Dict:
+    random.seed(seed)
+    items = {}
+    items_per_room = number_of_items // room_count
+    extra_items = number_of_items % room_count
+    half_room_size = room_size / 2 - room_boundary_offset
+
+    # Моделируем сетку комнат (как в RoomsGenerator.cs)
+    grid_size_x = 15
+    grid_size_y = 5
+    occupied_positions = [(0, 0)]  # Начальная комната в центре
+    room_positions = [(0, 0)]
+    for _ in range(room_count - 1):
+        available_positions = []
+        for x, y in occupied_positions:
+            for dx, dy in [(0, 1), (0, -1), (-1, 0), (1, 0)]:
+                new_pos = (x + dx, y + dy)
+                if (-grid_size_x // 2 <= new_pos[0] <= grid_size_x // 2 and
+                    -grid_size_y // 2 <= new_pos[1] <= grid_size_y // 2 and
+                    new_pos not in occupied_positions):
+                    available_positions.append(new_pos)
+        if available_positions:
+            new_pos = random.choice(available_positions)
+            occupied_positions.append(new_pos)
+            room_positions.append(new_pos)
+
+    item_index = 1
+    for x, y in room_positions:
+        items_to_spawn = items_per_room + (1 if extra_items > 0 else 0)
+        if extra_items > 0:
+            extra_items -= 1
+        room_center = {"x": x * room_size, "y": 5.0, "z": y * room_size}
+        for _ in range(items_to_spawn):
+            x_offset = random.uniform(-half_room_size, half_room_size)
+            z_offset = random.uniform(-half_room_size, half_room_size)
+            items[f"Item_{item_index}"] = {
+                "position": {"x": room_center["x"] + x_offset, "y": 5.0, "z": room_center["z"] + z_offset},
+                "collected": False
+            }
+            item_index += 1
+
+    print(f"Generated {item_index - 1} items for seed {seed}")
+    return items
+
 @app.post("/create_lobby")
 async def create_lobby(request: LobbyCreateRequest):
     username = request.username
@@ -45,7 +89,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "max_players": 4,
         "scores": {username: 0},
         "seed": 0,
-        "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}}
+        "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
+        "items": {}
     }
     clients[lobby_id] = []
     
@@ -114,16 +159,18 @@ async def start_game(request: StartGameRequest):
         return {"error": "Only the creator can start the game"}
     
     lobby["status"] = "started"
-    lobby["seed"] = seed  
+    lobby["seed"] = seed
+    lobby["items"] = generate_items(seed)
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
         "players": lobby["players"],
         "status": "started",
-        "seed": seed
+        "seed": seed,
+        "items": lobby["items"]
     })
     
-    print(f"Game started in lobby {lobby_id} with seed {seed}")
+    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
     return {"message": "Game has started"}
 
 @app.websocket("/ws/lobby")
@@ -159,7 +206,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "max_players": 4,
                         "scores": {username: 0},
                         "seed": 0,
-                        "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}}
+                        "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
+                        "items": {}
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -227,14 +275,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
+                    lobby["items"] = generate_items(seed)
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
                         "players": lobby["players"],
                         "status": "started",
-                        "seed": seed
+                        "seed": seed,
+                        "items": lobby["items"]
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
@@ -310,6 +360,45 @@ async def websocket_endpoint(websocket: WebSocket):
                         "x": x,
                         "y": y,
                         "z": z
+                    })
+                
+                elif action == "collect_item":
+                    lobby_id = message.get("lobby_id")
+                    username = message.get("username")
+                    item_id = message.get("item_id")
+                    
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+                    
+                    if username not in lobby["players"]:
+                        await websocket.send_json({"error": "Player not in lobby"})
+                        continue
+                    
+                    if item_id not in lobby["items"]:
+                        await websocket.send_json({"error": "Item not found"})
+                        continue
+                    
+                    if lobby["items"][item_id]["collected"]:
+                        await websocket.send_json({"error": "Item already collected"})
+                        continue
+                    
+                    lobby["items"][item_id]["collected"] = True
+                    lobby["scores"][username] = lobby["scores"].get(username, 0) + 1
+                    print(f"Item {item_id} collected by {username} in lobby {lobby_id}, new score: {lobby['scores'][username]}")
+                    
+                    await notify_clients(lobby_id, {
+                        "action": "item_collected",
+                        "lobby_id": lobby_id,
+                        "item_id": item_id,
+                        "username": username,
+                        "scores": lobby["scores"]
                     })
                 
                 elif action == "ping":
