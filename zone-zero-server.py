@@ -23,7 +23,7 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
-    items: Dict[str, dict] 
+    item_ids: List[str]  
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -100,7 +100,7 @@ async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
     username = request.username
     seed = request.seed
-    items = request.items  
+    item_ids = request.item_ids  
     
     lobby = None
     creator = None
@@ -118,17 +118,17 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
-    lobby["items"] = items  
+    lobby["items"] = {item_id: {"collected": False} for item_id in item_ids}
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
         "players": lobby["players"],
         "status": "started",
         "seed": seed,
-        "items": lobby["items"]
+        "item_ids": item_ids 
     })
     
-    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items from client")
+    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(item_ids)} item IDs from client")
     return {"message": "Game has started"}
 
 @app.websocket("/ws/lobby")
@@ -214,7 +214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     username = message.get("username")
                     lobby_id = message.get("lobby_id")
                     seed = message.get("seed", 0)
-                    items = message.get("items", {}) 
+                    item_ids = message.get("item_ids", [])  
                     
                     lobby = None
                     creator = None
@@ -234,16 +234,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
-                    lobby["items"] = items  
+                    lobby["items"] = {item_id: {"collected": False} for item_id in item_ids}
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
                         "players": lobby["players"],
                         "status": "started",
                         "seed": seed,
-                        "items": lobby["items"]
+                        "item_ids": item_ids
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items from client")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(item_ids)} item IDs from client")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
