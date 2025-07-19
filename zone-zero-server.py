@@ -27,49 +27,7 @@ class StartGameRequest(BaseModel):
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
 
-def generate_items(seed: int, number_of_items: int = 10, room_count: int = 15, room_size: float = 30.0, room_boundary_offset: float = 1.0) -> Dict:
-    random.seed(seed)
-    items = {}
-    items_per_room = number_of_items // room_count
-    extra_items = number_of_items % room_count
-    half_room_size = room_size / 2 - room_boundary_offset
 
-    # Моделируем сетку комнат (как в RoomsGenerator.cs)
-    grid_size_x = 15
-    grid_size_y = 5
-    occupied_positions = [(0, 0)]  # Начальная комната в центре
-    room_positions = [(0, 0)]
-    for _ in range(room_count - 1):
-        available_positions = []
-        for x, y in occupied_positions:
-            for dx, dy in [(0, 1), (0, -1), (-1, 0), (1, 0)]:
-                new_pos = (x + dx, y + dy)
-                if (-grid_size_x // 2 <= new_pos[0] <= grid_size_x // 2 and
-                    -grid_size_y // 2 <= new_pos[1] <= grid_size_y // 2 and
-                    new_pos not in occupied_positions):
-                    available_positions.append(new_pos)
-        if available_positions:
-            new_pos = random.choice(available_positions)
-            occupied_positions.append(new_pos)
-            room_positions.append(new_pos)
-
-    item_index = 1
-    for x, y in room_positions:
-        items_to_spawn = items_per_room + (1 if extra_items > 0 else 0)
-        if extra_items > 0:
-            extra_items -= 1
-        room_center = {"x": x * room_size, "y": 5.0, "z": y * room_size}
-        for _ in range(items_to_spawn):
-            x_offset = random.uniform(-half_room_size, half_room_size)
-            z_offset = random.uniform(-half_room_size, half_room_size)
-            items[f"Item_{item_index}"] = {
-                "position": {"x": room_center["x"] + x_offset, "y": 5.0, "z": room_center["z"] + z_offset},
-                "collected": False
-            }
-            item_index += 1
-
-    print(f"Generated {item_index - 1} items for seed {seed}")
-    return items
 
 @app.post("/create_lobby")
 async def create_lobby(request: LobbyCreateRequest):
@@ -160,7 +118,6 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
-    lobby["items"] = generate_items(seed)
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
@@ -275,7 +232,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
-                    lobby["items"] = generate_items(seed)
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
