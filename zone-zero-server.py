@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from typing import List, Dict
 import uuid
 import json
-import random
 
 app = FastAPI()
 
@@ -23,7 +22,15 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
-    item_ids: List[str]  
+
+class ItemData(BaseModel):
+    item_id: str
+    position: Dict[str, float]
+
+class ItemsDataRequest(BaseModel):
+    lobby_id: str
+    username: str
+    items: List[ItemData]
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -100,7 +107,6 @@ async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
     username = request.username
     seed = request.seed
-    item_ids = request.item_ids  
     
     lobby = None
     creator = None
@@ -118,18 +124,55 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
-    lobby["items"] = {item_id: {"collected": False} for item_id in item_ids}
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
         "players": lobby["players"],
         "status": "started",
         "seed": seed,
-        "item_ids": item_ids 
+        "items": lobby["items"]
     })
     
-    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(item_ids)} item IDs from client")
+    print(f"Game started in lobby {lobby_id} with seed {seed}, waiting for items data")
     return {"message": "Game has started"}
+
+@app.post("/items_data")
+async def receive_items_data(request: ItemsDataRequest):
+    lobby_id = request.lobby_id
+    username = request.username
+    items = request.items
+    
+    lobby = None
+    creator = None
+    for c, l in lobbies.items():
+        if l["lobby_id"] == lobby_id:
+            lobby = l
+            creator = c
+            break
+    
+    if not lobby:
+        return {"error": "Lobby not found"}
+    
+    if username != lobby["creator"]:
+        return {"error": "Only the creator can send items data"}
+    
+    lobby["items"] = {
+        item.item_id: {
+            "position": item.position,
+            "collected": False
+        } for item in items
+    }
+    
+    await notify_clients(lobby_id, {
+        "lobby_id": lobby_id,
+        "players": lobby["players"],
+        "status": lobby["status"],
+        "seed": lobby["seed"],
+        "items": lobby["items"]
+    })
+    
+    print(f"Received and stored {len(items)} items for lobby {lobby_id} from {username}")
+    return {"message": "Items data received and stored"}
 
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
@@ -214,7 +257,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     username = message.get("username")
                     lobby_id = message.get("lobby_id")
                     seed = message.get("seed", 0)
-                    item_ids = message.get("item_ids", [])  
                     
                     lobby = None
                     creator = None
@@ -234,16 +276,52 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
-                    lobby["items"] = {item_id: {"collected": False} for item_id in item_ids}
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
                         "players": lobby["players"],
                         "status": "started",
                         "seed": seed,
-                        "item_ids": item_ids
+                        "items": lobby["items"]
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(item_ids)} item IDs from client")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, waiting for items data")
+                
+                elif action == "items_data":
+                    username = message.get("username")
+                    lobby_id = message.get("lobby_id")
+                    items = message.get("items", [])
+                    
+                    lobby = None
+                    creator = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            creator = c
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+                    
+                    if username != lobby["creator"]:
+                        await websocket.send_json({"error": "Only the creator can send items data"})
+                        continue
+                    
+                    lobby["items"] = {
+                        item["item_id"]: {
+                            "position": item["position"],
+                            "collected": False
+                        } for item in items
+                    }
+                    
+                    await notify_clients(lobby_id, {
+                        "lobby_id": str(lobby_id),
+                        "players": lobby["players"],
+                        "status": lobby["status"],
+                        "seed": lobby["seed"],
+                        "items": lobby["items"]
+                    })
+                    print(f"Received and stored {len(items)} items for lobby {lobby_id} from {username}")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
