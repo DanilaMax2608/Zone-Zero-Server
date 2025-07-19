@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Dict
 import uuid
 import json
+import random
 
 app = FastAPI()
 
@@ -22,7 +23,7 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
-    items: Dict[str, Dict]  
+    items: Dict[str, dict] 
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -117,7 +118,7 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
-    lobby["items"] = items
+    lobby["items"] = items 
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
@@ -127,7 +128,7 @@ async def start_game(request: StartGameRequest):
         "items": lobby["items"]
     })
     
-    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items")
+    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items from client")
     return {"message": "Game has started"}
 
 @app.websocket("/ws/lobby")
@@ -233,7 +234,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
-                    lobby["items"] = items
+                    lobby["items"] = items  
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
@@ -242,7 +243,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": seed,
                         "items": lobby["items"]
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, received {len(lobby['items'])} items from client")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
