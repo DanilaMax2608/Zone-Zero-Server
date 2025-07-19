@@ -23,7 +23,7 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
-    items: Dict[str, dict] = {}  
+    items: Dict[str, dict] 
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -100,7 +100,7 @@ async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
     username = request.username
     seed = request.seed
-    items = request.items
+    items = request.items  
     
     lobby = None
     creator = None
