@@ -196,6 +196,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     if username in lobby["players"]:
                         await websocket.send_json({"error": "You are already in the lobby"})
                         continue
+
+                    if lobby["status"] == "started":
+                        await websocket.send_json({"error": "Game already started, cannot join"})
+                        continue
                     
                     lobby["players"].append(username)
                     lobby["scores"][username] = 0
