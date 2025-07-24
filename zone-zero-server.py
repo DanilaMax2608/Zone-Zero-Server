@@ -27,8 +27,6 @@ class StartGameRequest(BaseModel):
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
 
-
-
 @app.post("/create_lobby")
 async def create_lobby(request: LobbyCreateRequest):
     username = request.username
@@ -265,15 +263,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     if username == lobby["creator"]:
                         if lobby_id in clients:
                             for client in clients[lobby_id]:
-                                if client != websocket:
+                                if client != websocket: 
                                     try:
                                         await client.send_json({"error": "Lobby closed by creator"})
-                                        await client.close()
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        print(f"Error notifying client in lobby {lobby_id}: {e}")
                             del clients[lobby_id]
                         del lobbies[creator]
                         print(f"Lobby {lobby_id} deleted by creator {username}")
+                        await websocket.send_json({"message": "Lobby closed"})
                     else:
                         if username in lobby["players"]:
                             lobby["players"].remove(username)
@@ -288,6 +286,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "status": lobby["status"]
                             })
                             print(f"{username} left lobby {lobby_id}")
+                            # Do not close the non-creator's WebSocket connection
+                            await websocket.send_json({"message": "Left lobby"})
                 
                 elif action == "update_position":
                     lobby_id = message.get("lobby_id")
@@ -398,13 +398,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"Ping received from {username}, sent pong")
             
             except WebSocketDisconnect:
-                handle_disconnect(websocket)
+                await handle_disconnect(websocket)
                 break
     
     except WebSocketDisconnect:
-        handle_disconnect(websocket)
+        await handle_disconnect(websocket)
 
-def handle_disconnect(websocket: WebSocket):
+async def handle_disconnect(websocket: WebSocket):
     client_ip = websocket.client.host
     for lobby_id, client_list in list(clients.items()):
         if websocket in client_list:
@@ -420,7 +420,7 @@ def handle_disconnect(websocket: WebSocket):
                                 lobby["players"].remove(username)
                                 del lobby["scores"][username]
                                 del lobby["positions"][username]
-                                notify_clients(lobby_id, {
+                                await notify_clients(lobby_id, {
                                     "lobby_id": lobby_id,
                                     "players": lobby["players"],
                                     "status": lobby["status"]
@@ -434,6 +434,6 @@ async def notify_clients(lobby_id: str, message: dict):
         for client in list(clients[lobby_id]):
             try:
                 await client.send_json(message)
-            except:
+            except Exception as e:
                 clients[lobby_id].remove(client)
-                print(f"Removed disconnected client from lobby {lobby_id}")
+                print(f"Removed disconnected client from lobby {lobby_id}: {e}")
