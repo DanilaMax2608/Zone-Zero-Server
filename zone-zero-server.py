@@ -6,6 +6,7 @@ from typing import List, Dict
 import uuid
 import json
 import random
+import asyncio 
 
 app = FastAPI()
 
@@ -47,7 +48,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
-        "ready_players": {username: False} 
+        "ready_players": {username: False}
     }
     clients[lobby_id] = []
     
@@ -80,7 +81,7 @@ async def join_lobby(request: LobbyJoinRequest):
     lobby["players"].append(username)
     lobby["scores"][username] = 0
     lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
-    lobby["ready_players"][username] = False  
+    lobby["ready_players"][username] = False
     
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
@@ -116,7 +117,7 @@ async def start_game(request: StartGameRequest):
     if username != lobby["creator"]:
         return {"error": "Only the creator can start the game"}
     
-    lobby["status"] = "loading" 
+    lobby["status"] = "loading"
     lobby["seed"] = seed
     
     await notify_clients(lobby_id, {
@@ -280,7 +281,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             "players": lobby["players"],
                             "status": "started",
                             "seed": lobby["seed"],
-                            "items": lobby["items"]
+                            "items": lobby["items"],
+                            "start_timestamp": int(time.time() * 1000)
                         })
                         print(f"All players ready, game started in lobby {lobby_id}")
                 
@@ -472,9 +474,12 @@ async def handle_disconnect(websocket: WebSocket):
 
 async def notify_clients(lobby_id: str, message: dict):
     if lobby_id in clients:
+        tasks = []
         for client in list(clients[lobby_id]):
             try:
-                await client.send_json(message)
+                tasks.append(client.send_json(message))
             except Exception as e:
                 clients[lobby_id].remove(client)
                 print(f"Removed disconnected client from lobby {lobby_id}: {e}")
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
