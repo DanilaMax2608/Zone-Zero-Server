@@ -287,31 +287,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             print(f"{username} left lobby {lobby_id}")
                             await websocket.send_json({"message": "Left lobby"})
-
-                elif action == "player_ready":
-                    username = message.get("username")
-                    is_ready = message.get("is_ready", False)
-                    lobby_id = message.get("lobby_id")
-    
-                    if lobby_id in lobbies:
-                        lobby = None
-                        for c, l in lobbies.items():
-                            if l["lobby_id"] == lobby_id:
-                                lobby = l
-                                break
-        
-                        if lobby:
-                            if "ready_players" not in lobby:
-                                lobby["ready_players"] = {}
-                            lobby["ready_players"][username] = is_ready
-            
-                            all_ready = all(lobby["ready_players"].get(p, False) for p in lobby["players"])
-            
-                            if all_ready:
-                                await notify_clients(lobby_id, {
-                                    "action": "all_players_ready",
-                                    "lobby_id": lobby_id
-                                })
                 
                 elif action == "update_position":
                     lobby_id = message.get("lobby_id")
