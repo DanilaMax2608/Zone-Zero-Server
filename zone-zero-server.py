@@ -46,8 +46,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "scores": {username: 0},
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
-        "items": {},
-        "ready_players": {username: False}  
+        "items": {}
     }
     clients[lobby_id] = []
     
@@ -80,7 +79,6 @@ async def join_lobby(request: LobbyJoinRequest):
     lobby["players"].append(username)
     lobby["scores"][username] = 0
     lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
-    lobby["ready_players"][username] = False 
     
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
@@ -116,19 +114,19 @@ async def start_game(request: StartGameRequest):
     if username != lobby["creator"]:
         return {"error": "Only the creator can start the game"}
     
-    lobby["status"] = "loading" 
+    lobby["status"] = "started"
     lobby["seed"] = seed
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
         "players": lobby["players"],
-        "status": "loading",
+        "status": "started",
         "seed": seed,
         "items": lobby["items"]
     })
     
-    print(f"Game loading in lobby {lobby_id} with seed {seed}, waiting for players to be ready")
-    return {"message": "Game is loading, waiting for players to be ready"}
+    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
+    return {"message": "Game has started"}
 
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
@@ -164,8 +162,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "scores": {username: 0},
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
-                        "items": {},
-                        "ready_players": {username: False}
+                        "items": {}
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -198,14 +195,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"error": "You are already in the lobby"})
                         continue
 
-                    if lobby["status"] == "loading" or lobby["status"] == "started":
+                    if lobby["status"] == "started":
                         await websocket.send_json({"error": "Game already started, cannot join"})
                         continue
                     
                     lobby["players"].append(username)
                     lobby["scores"][username] = 0
                     lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
-                    lobby["ready_players"][username] = False
                     clients[lobby["lobby_id"]].append(websocket)
                     
                     await notify_clients(lobby["lobby_id"], {
@@ -236,51 +232,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"error": "Only the creator can start the game"})
                         continue
                     
-                    lobby["status"] = "loading"
+                    lobby["status"] = "started"
                     lobby["seed"] = seed
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
                         "players": lobby["players"],
-                        "status": "loading",
+                        "status": "started",
                         "seed": seed,
                         "items": lobby["items"]
                     })
-                    print(f"Game loading in lobby {lobby_id} with seed {seed}, waiting for players to be ready")
-                
-                elif action == "ready":
-                    username = message.get("username")
-                    lobby_id = message.get("lobby_id")
-                    
-                    lobby = None
-                    for c, l in lobbies.items():
-                        if l["lobby_id"] == lobby_id:
-                            lobby = l
-                            break
-                    
-                    if not lobby:
-                        await websocket.send_json({"error": "Lobby not found"})
-                        continue
-                    
-                    if username not in lobby["players"]:
-                        await websocket.send_json({"error": "Player not in lobby"})
-                        continue
-                    
-                    lobby["ready_players"][username] = True
-                    print(f"Player {username} marked as ready in lobby {lobby_id}")
-                    
-                    all_ready = all(lobby["ready_players"].get(p, False) for p in lobby["players"])
-                    if all_ready:
-                        lobby["status"] = "started"
-                        await notify_clients(lobby_id, {
-                            "action": "game_start",
-                            "lobby_id": lobby_id,
-                            "players": lobby["players"],
-                            "status": "started",
-                            "seed": lobby["seed"],
-                            "items": lobby["items"]
-                        })
-                        print(f"All players ready, game started in lobby {lobby_id}")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
@@ -297,9 +259,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not lobby:
                         await websocket.send_json({"error": "Lobby not found"})
                         continue
-                    
-                    if username in lobby["ready_players"]:
-                        del lobby["ready_players"][username]
                     
                     if username == lobby["creator"]:
                         if lobby_id in clients:
@@ -328,6 +287,31 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             print(f"{username} left lobby {lobby_id}")
                             await websocket.send_json({"message": "Left lobby"})
+
+                elif action == "player_ready":
+                    username = message.get("username")
+                    is_ready = message.get("is_ready", False)
+                    lobby_id = message.get("lobby_id")
+    
+                    if lobby_id in lobbies:
+                        lobby = None
+                        for c, l in lobbies.items():
+                            if l["lobby_id"] == lobby_id:
+                                lobby = l
+                                break
+        
+                        if lobby:
+                            if "ready_players" not in lobby:
+                                lobby["ready_players"] = {}
+                            lobby["ready_players"][username] = is_ready
+            
+                            all_ready = all(lobby["ready_players"].get(p, False) for p in lobby["players"])
+            
+                            if all_ready:
+                                await notify_clients(lobby_id, {
+                                    "action": "all_players_ready",
+                                    "lobby_id": lobby_id
+                                })
                 
                 elif action == "update_position":
                     lobby_id = message.get("lobby_id")
@@ -460,8 +444,6 @@ async def handle_disconnect(websocket: WebSocket):
                                 lobby["players"].remove(username)
                                 del lobby["scores"][username]
                                 del lobby["positions"][username]
-                                if username in lobby["ready_players"]:
-                                    del lobby["ready_players"][username]
                                 await notify_clients(lobby_id, {
                                     "lobby_id": lobby_id,
                                     "players": lobby["players"],
