@@ -46,7 +46,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "scores": {username: 0},
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
-        "items": {}
+        "items": {},
+        "ready_players": {username: False}  
     }
     clients[lobby_id] = []
     
@@ -79,6 +80,7 @@ async def join_lobby(request: LobbyJoinRequest):
     lobby["players"].append(username)
     lobby["scores"][username] = 0
     lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
+    lobby["ready_players"][username] = False 
     
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
@@ -162,7 +164,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "scores": {username: 0},
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
-                        "items": {}
+                        "items": {},
+                        "ready_players": {username: False}
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -202,6 +205,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     lobby["players"].append(username)
                     lobby["scores"][username] = 0
                     lobby["positions"][username] = {"x": 0.0, "y": 0.0, "z": 0.0}
+                    lobby["ready_players"][username] = False
                     clients[lobby["lobby_id"]].append(websocket)
                     
                     await notify_clients(lobby["lobby_id"], {
@@ -277,6 +281,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             lobby["players"].remove(username)
                             del lobby["scores"][username]
                             del lobby["positions"][username]
+                            del lobby["ready_players"][username]
                             if lobby_id in clients:
                                 if websocket in clients[lobby_id]:
                                     clients[lobby_id].remove(websocket)
@@ -391,6 +396,35 @@ async def websocket_endpoint(websocket: WebSocket):
         
                     print(f"Registered {len(lobby['items'])} items in lobby {lobby_id}")
                 
+                elif action == "ready":
+                    lobby_id = message.get("lobby_id")
+                    username = message.get("username")
+                    
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+                    
+                    if username not in lobby["players"]:
+                        await websocket.send_json({"error": "Player not in lobby"})
+                        continue
+                    
+                    lobby["ready_players"][username] = True
+                    print(f"Player {username} marked as ready in lobby {lobby_id}")
+                    
+                    all_ready = all(lobby["ready_players"].get(player, False) for player in lobby["players"])
+                    if all_ready:
+                        print(f"All players ready in lobby {lobby_id}, broadcasting start_game")
+                        await notify_clients(lobby_id, {
+                            "action": "start_game",
+                            "lobby_id": lobby_id
+                        })
+                
                 elif action == "ping":
                     username = message.get("username", f"Unknown_{client_ip}")
                     await websocket.send_json({"action": "pong"})
@@ -419,6 +453,7 @@ async def handle_disconnect(websocket: WebSocket):
                                 lobby["players"].remove(username)
                                 del lobby["scores"][username]
                                 del lobby["positions"][username]
+                                del lobby["ready_players"][username]
                                 await notify_clients(lobby_id, {
                                     "lobby_id": lobby_id,
                                     "players": lobby["players"],
