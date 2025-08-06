@@ -23,6 +23,9 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
+    rooms_count: int = 20  
+    items_count: int = 10  
+    timer_duration: float = 100.0  
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -47,7 +50,10 @@ async def create_lobby(request: LobbyCreateRequest):
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
-        "ready_players": []  
+        "ready_players": [],
+        "rooms_count": 20,  
+        "items_count": 10, 
+        "timer_duration": 100.0  
     }
     clients[lobby_id] = []
     
@@ -100,6 +106,9 @@ async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
     username = request.username
     seed = request.seed
+    rooms_count = request.rooms_count  
+    items_count = request.items_count  
+    timer_duration = request.timer_duration  
     
     lobby = None
     creator = None
@@ -117,16 +126,22 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
+    lobby["rooms_count"] = rooms_count 
+    lobby["items_count"] = items_count  
+    lobby["timer_duration"] = timer_duration  
     
     await notify_clients(lobby_id, {
         "lobby_id": lobby_id,
         "players": lobby["players"],
         "status": "started",
         "seed": seed,
-        "items": lobby["items"]
+        "items": lobby["items"],
+        "rooms_count": rooms_count,  
+        "items_count": items_count,  
+        "timer_duration": timer_duration  
     })
     
-    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
+    print(f"Game started in lobby {lobby_id} with seed {seed}, rooms {rooms_count}, items {items_count}, timer {timer_duration}s")
     return {"message": "Game has started"}
 
 @app.websocket("/ws/lobby")
@@ -164,7 +179,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
-                        "ready_players": []
+                        "ready_players": [],
+                        "rooms_count": 20, 
+                        "items_count": 10, 
+                        "timer_duration": 100.0  
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -217,6 +235,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     username = message.get("username")
                     lobby_id = message.get("lobby_id")
                     seed = message.get("seed", 0)
+                    rooms_count = message.get("rooms_count", 20) 
+                    items_count = message.get("items_count", 10)  
+                    timer_duration = message.get("timer_duration", 100.0)  
                     
                     lobby = None
                     creator = None
@@ -236,15 +257,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     lobby["status"] = "started"
                     lobby["seed"] = seed
+                    lobby["rooms_count"] = rooms_count 
+                    lobby["items_count"] = items_count  
+                    lobby["timer_duration"] = timer_duration 
                     
                     await notify_clients(lobby_id, {
                         "lobby_id": str(lobby_id),
                         "players": lobby["players"],
                         "status": "started",
                         "seed": seed,
-                        "items": lobby["items"]
+                        "items": lobby["items"],
+                        "rooms_count": rooms_count,  
+                        "items_count": items_count, 
+                        "timer_duration": timer_duration  
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}, rooms {rooms_count}, items {items_count}, timer {timer_duration}s")
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
