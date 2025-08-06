@@ -23,9 +23,9 @@ class StartGameRequest(BaseModel):
     lobby_id: str
     username: str
     seed: int = 0
-    rooms_count: int = 20
-    items_count: int = 10
-    game_time: float = 100.0
+    rooms_count: int = 20  
+    items_count: int = 10  
+    game_time: float = 100  
 
 def is_valid_username(username: str) -> bool:
     return username.startswith("@") and len(username) > 1
@@ -48,9 +48,9 @@ async def create_lobby(request: LobbyCreateRequest):
         "max_players": 4,
         "scores": {username: 0},
         "seed": 0,
-        "rooms_count": 20,
-        "items_count": 10,
-        "game_time": 100.0,
+        "rooms_count": 20,  
+        "items_count": 10, 
+        "game_time": 100,   
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
         "ready_players": []  
@@ -106,9 +106,9 @@ async def start_game(request: StartGameRequest):
     lobby_id = request.lobby_id
     username = request.username
     seed = request.seed
-    rooms_count = request.rooms_count
-    items_count = request.items_count
-    game_time = request.game_time
+    rooms_count = request.rooms_count  
+    items_count = request.items_count  
+    game_time = request.game_time     
     
     lobby = None
     creator = None
@@ -126,7 +126,7 @@ async def start_game(request: StartGameRequest):
     
     lobby["status"] = "started"
     lobby["seed"] = seed
-    lobby["rooms_count"] = rooms_count
+    lobby["rooms_count"] = rooms_count  
     lobby["items_count"] = items_count
     lobby["game_time"] = game_time
     
@@ -135,7 +135,7 @@ async def start_game(request: StartGameRequest):
         "players": lobby["players"],
         "status": "started",
         "seed": seed,
-        "rooms_count": rooms_count,
+        "rooms_count": rooms_count,  
         "items_count": items_count,
         "game_time": game_time,
         "items": lobby["items"]
