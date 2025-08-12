@@ -392,6 +392,49 @@ async def websocket_endpoint(websocket: WebSocket):
                         "username": username,
                         "scores": lobby["scores"]
                     })
+                
+                elif action == "collect_bonus":
+                    lobby_id = message.get("lobby_id")
+                    username = message.get("username")
+                    item_id = message.get("item_id")
+                    bonus_type = message.get("bonus_type")
+                    
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+                    
+                    if username not in lobby["players"]:
+                        await websocket.send_json({"error": "Player not in lobby"})
+                        continue
+                    
+                    if item_id not in lobby["items"]:
+                        await websocket.send_json({"error": "Bonus item not found"})
+                        continue
+                    
+                    if not lobby["items"][item_id]["is_bonus"]:
+                        await websocket.send_json({"error": "Item is not a bonus item"})
+                        continue
+                    
+                    if lobby["items"][item_id]["collected"]:
+                        await websocket.send_json({"error": "Bonus item already collected"})
+                        continue
+                    
+                    lobby["items"][item_id]["collected"] = True
+                    print(f"Bonus item {item_id} (type: {bonus_type}) collected by {username} in lobby {lobby_id}")
+                    
+                    await notify_clients(lobby_id, {
+                        "action": "collect_bonus",
+                        "lobby_id": lobby_id,
+                        "item_id": item_id,
+                        "username": username,
+                        "bonus_type": bonus_type
+                    })
 
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
@@ -413,7 +456,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         if item_id:
                             lobby["items"][item_id] = {
                                 "collected": False,
-                                "position": item.get("position", {"x": 0, "y": 0, "z": 0})
+                                "position": item.get("position", {"x": 0, "y": 0, "z": 0}),
+                                "is_bonus": item.get("is_bonus", False),
+                                "bonus_type": item.get("bonus_type", "")
                             }
         
                     await notify_clients(lobby_id, {
