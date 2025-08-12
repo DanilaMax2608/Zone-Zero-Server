@@ -92,7 +92,7 @@ async def join_lobby(request: LobbyJoinRequest):
         "lobby_id": str(lobby["lobby_id"]),
         "creator": creator,
         "players": lobby["players"],
-        "status": lobby["status"]
+        "status": "status"
     }
 
 @app.post("/start_game")
@@ -196,7 +196,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if username in lobby["players"]:
                         await websocket.send_json({"error": "You are already in the lobby"})
                         continue
-
+                    
                     if lobby["status"] == "started":
                         await websocket.send_json({"error": "Game already started, cannot join"})
                         continue
@@ -209,7 +209,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await notify_clients(lobby["lobby_id"], {
                         "lobby_id": str(lobby["lobby_id"]),
                         "players": lobby["players"],
-                        "status": lobby["status"]
+                        "status": "waiting"
                     })
                     print(f"{username} joined lobby {lobby['lobby_id']}")
                 
@@ -392,7 +392,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "username": username,
                         "scores": lobby["scores"]
                     })
-                
+
                 elif action == "collect_bonus":
                     lobby_id = message.get("lobby_id")
                     username = message.get("username")
@@ -414,7 +414,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     if item_id not in lobby["items"]:
-                        await websocket.send_json({"error": "Bonus item not found"})
+                        await websocket.send_json({"error": "Item not found"})
                         continue
                     
                     if not lobby["items"][item_id]["is_bonus"]:
@@ -426,10 +426,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     lobby["items"][item_id]["collected"] = True
-                    print(f"Bonus item {item_id} (type: {bonus_type}) collected by {username} in lobby {lobby_id}")
+                    print(f"Bonus item {item_id} collected by {username} in lobby {lobby_id}, bonus_type: {bonus_type}")
                     
                     await notify_clients(lobby_id, {
-                        "action": "collect_bonus",
+                        "action": "item_collected",
                         "lobby_id": lobby_id,
                         "item_id": item_id,
                         "username": username,
