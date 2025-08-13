@@ -380,16 +380,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     if lobby["items"][item_id]["collected"]:
                         await websocket.send_json({"error": "Item already collected"})
                         continue
-
-                    elif bonus_type == "disable_control_others":
-                        for player in lobby["players"]:
-                            if player != username:
-                                await notify_clients(lobby_id, {
-                                    "action": "apply_effect",
-                                    "effect_type": "disable_control",
-                                    "target_username": player,
-                                    "duration": 5 
-                                })
                     
                     lobby["items"][item_id]["collected"] = True
                     lobby["scores"][username] = lobby["scores"].get(username, 0) + 1
