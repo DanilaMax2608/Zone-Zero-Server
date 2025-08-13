@@ -47,7 +47,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
-        "ready_players": []  
+        "ready_players": [],
+        "active_effects": {}
     }
     clients[lobby_id] = []
     
@@ -129,6 +130,32 @@ async def start_game(request: StartGameRequest):
     print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
     return {"message": "Game has started"}
 
+async def notify_clients(lobby_id: str, message: dict):
+    if lobby_id in clients:
+        for client in list(clients[lobby_id]):
+            try:
+                await client.send_json(message)
+            except Exception as e:
+                clients[lobby_id].remove(client)
+                print(f"Removed disconnected client from lobby {lobby_id}: {e}")
+
+async def apply_effect_timer(lobby_id: str, username: str, effect: str, duration: float):
+    await asyncio.sleep(duration)
+    lobby = None
+    for c, l in lobbies.items():
+        if l["lobby_id"] == lobby_id:
+            lobby = l
+            break
+    if lobby and username in lobby["active_effects"]:
+        del lobby["active_effects"][username]
+        await notify_clients(lobby_id, {
+            "action": "remove_effect",
+            "lobby_id": lobby_id,
+            "username": username,
+            "effect": effect
+        })
+        print(f"Effect {effect} expired for {username} in lobby {lobby_id}")
+
 @app.websocket("/ws/lobby")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -164,7 +191,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
-                        "ready_players": []
+                        "ready_players": [],
+                        "active_effects": {}
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -428,21 +456,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     lobby["items"][item_id]["collected"] = True
                     print(f"Bonus item {item_id} collected by {username} in lobby {lobby_id}, bonus_type: {bonus_type}")
                     
+                    await notify_clients(lobby_id, {
+                        "action": "item_collected",
+                        "lobby_id": lobby_id,
+                        "item_id": item_id,
+                        "username": username,
+                        "bonus_type": bonus_type
+                    })
+
                     if bonus_type == "disable_control_others":
-                        await notify_other_clients(lobby_id, username, {
-                            "action": "apply_bonus_effect",
-                            "lobby_id": lobby_id,
-                            "username": username,
-                            "bonus_type": bonus_type
-                        })
-                    else:
-                        await notify_clients(lobby_id, {
-                            "action": "item_collected",
-                            "lobby_id": lobby_id,
-                            "item_id": item_id,
-                            "username": username,
-                            "bonus_type": bonus_type
-                        })
+                        duration = 5.0
+                        lobby["active_effects"][username] = {"effect": bonus_type, "duration": duration}
+                        for player in lobby["players"]:
+                            if player != username:
+                                await notify_clients(lobby_id, {
+                                    "action": "apply_effect",
+                                    "lobby_id": lobby_id,
+                                    "username": username,
+                                    "effect": "disable_control_others",
+                                    "username_except": username
+                                })
+                        asyncio.create_task(apply_effect_timer(lobby_id, username, bonus_type, duration))
 
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
@@ -517,15 +551,6 @@ async def handle_disconnect(websocket: WebSocket):
             break
 
 async def notify_clients(lobby_id: str, message: dict):
-    if lobby_id in clients:
-        for client in list(clients[lobby_id]):
-            try:
-                await client.send_json(message)
-            except Exception as e:
-                clients[lobby_id].remove(client)
-                print(f"Removed disconnected client from lobby {lobby_id}: {e}")
-
-async def notify_other_clients(lobby_id: str, exclude_username: str, message: dict):
     if lobby_id in clients:
         for client in list(clients[lobby_id]):
             try:
