@@ -408,36 +408,36 @@ async def websocket_endpoint(websocket: WebSocket):
                     username = message.get("username")
                     item_id = message.get("item_id")
                     bonus_type = message.get("bonus_type")
-                    
+    
                     lobby = None
                     for c, l in lobbies.items():
                         if l["lobby_id"] == lobby_id:
                             lobby = l
                             break
-                    
+    
                     if not lobby:
                         await websocket.send_json({"error": "Lobby not found"})
                         continue
-                    
+    
                     if username not in lobby["players"]:
                         await websocket.send_json({"error": "Player not in lobby"})
                         continue
-                    
+    
                     if item_id not in lobby["items"]:
                         await websocket.send_json({"error": "Item not found"})
                         continue
-                    
+    
                     if not lobby["items"][item_id]["is_bonus"]:
                         await websocket.send_json({"error": "Item is not a bonus item"})
                         continue
-                    
+    
                     if lobby["items"][item_id]["collected"]:
                         await websocket.send_json({"error": "Bonus item already collected"})
                         continue
-                    
+    
                     lobby["items"][item_id]["collected"] = True
                     print(f"Bonus item {item_id} collected by {username} in lobby {lobby_id}, bonus_type: {bonus_type}")
-                    
+    
                     await notify_clients(lobby_id, {
                         "action": "item_collected",
                         "lobby_id": lobby_id,
@@ -445,6 +445,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         "username": username,
                         "bonus_type": bonus_type
                     })
+    
+                    if bonus_type == "disable_control_others":
+                        for player in lobby["players"]:
+                            if player != username:
+                                await notify_clients(lobby_id, {
+                                    "action": "apply_effect",
+                                    "effect_type": "disable_control",
+                                    "target_username": player,
+                                    "duration": 5  
+                                })
 
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
