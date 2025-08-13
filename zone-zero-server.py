@@ -428,13 +428,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     lobby["items"][item_id]["collected"] = True
                     print(f"Bonus item {item_id} collected by {username} in lobby {lobby_id}, bonus_type: {bonus_type}")
                     
-                    await notify_clients(lobby_id, {
-                        "action": "item_collected",
-                        "lobby_id": lobby_id,
-                        "item_id": item_id,
-                        "username": username,
-                        "bonus_type": bonus_type
-                    })
+                    if bonus_type == "disable_control_others":
+                        await notify_other_clients(lobby_id, username, {
+                            "action": "apply_bonus_effect",
+                            "lobby_id": lobby_id,
+                            "username": username,
+                            "bonus_type": bonus_type
+                        })
+                    else:
+                        await notify_clients(lobby_id, {
+                            "action": "item_collected",
+                            "lobby_id": lobby_id,
+                            "item_id": item_id,
+                            "username": username,
+                            "bonus_type": bonus_type
+                        })
 
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
@@ -509,6 +517,15 @@ async def handle_disconnect(websocket: WebSocket):
             break
 
 async def notify_clients(lobby_id: str, message: dict):
+    if lobby_id in clients:
+        for client in list(clients[lobby_id]):
+            try:
+                await client.send_json(message)
+            except Exception as e:
+                clients[lobby_id].remove(client)
+                print(f"Removed disconnected client from lobby {lobby_id}: {e}")
+
+async def notify_other_clients(lobby_id: str, exclude_username: str, message: dict):
     if lobby_id in clients:
         for client in list(clients[lobby_id]):
             try:
