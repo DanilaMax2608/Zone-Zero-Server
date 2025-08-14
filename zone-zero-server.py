@@ -446,6 +446,27 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "duration": 5  
                                 })
 
+                    if bonus_type == "slow_others":
+                        for player in lobby["players"]:
+                            if player != username:
+                                await notify_clients(lobby_id, {
+                                    "action": "apply_effect",
+                                    "effect_type": "slow_others",
+                                    "target_username": player,
+                                    "duration": 10,
+                                    "speed_multiplier": 0.5
+                                })
+                    if bonus_type == "speed_up_others":
+                        for player in lobby["players"]:
+                            if player != username:
+                                await notify_clients(lobby_id, {
+                                    "action": "apply_effect",
+                                    "effect_type": "speed_up_others",
+                                    "target_username": player,
+                                    "duration": 10,
+                                    "speed_multiplier": 2.0
+                                })
+
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
                     items = message.get("items", [])
