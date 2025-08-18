@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from datetime import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Dict
@@ -48,7 +47,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
-        "ready_players": []  
+        "ready_players": [],
+        "messages": [] 
     }
     clients[lobby_id] = []
     
@@ -85,7 +85,8 @@ async def join_lobby(request: LobbyJoinRequest):
     await notify_clients(lobby["lobby_id"], {
         "lobby_id": lobby["lobby_id"],
         "players": lobby["players"],
-        "status": lobby["status"]
+        "status": lobby["status"],
+        "messages": lobby["messages"]  
     })
     
     print(f"{username} joined lobby {lobby['lobby_id']}")
@@ -93,7 +94,8 @@ async def join_lobby(request: LobbyJoinRequest):
         "lobby_id": str(lobby["lobby_id"]),
         "creator": creator,
         "players": lobby["players"],
-        "status": "status"
+        "status": "status",
+        "messages": lobby["messages"]
     }
 
 @app.post("/start_game")
@@ -124,7 +126,8 @@ async def start_game(request: StartGameRequest):
         "players": lobby["players"],
         "status": "started",
         "seed": seed,
-        "items": lobby["items"]
+        "items": lobby["items"],
+        "messages": lobby["messages"]
     })
     
     print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
@@ -165,7 +168,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
-                        "ready_players": []
+                        "ready_players": [],
+                        "messages": []
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -173,7 +177,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "lobby_id": str(lobby_id),
                         "creator": username,
                         "players": [username],
-                        "status": "waiting"
+                        "status": "waiting",
+                        "messages": []
                     })
                     print(f"Created lobby {lobby_id} for {username}")
                 
@@ -210,7 +215,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await notify_clients(lobby["lobby_id"], {
                         "lobby_id": str(lobby["lobby_id"]),
                         "players": lobby["players"],
-                        "status": "waiting"
+                        "status": "waiting",
+                        "messages": lobby["messages"]
                     })
                     print(f"{username} joined lobby {lobby['lobby_id']}")
                 
@@ -243,7 +249,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "players": lobby["players"],
                         "status": "started",
                         "seed": seed,
-                        "items": lobby["items"]
+                        "items": lobby["items"],
+                        "messages": lobby["messages"]
                     })
                     print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
                 
@@ -288,7 +295,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             await notify_clients(lobby_id, {
                                 "lobby_id": lobby_id,
                                 "players": lobby["players"],
-                                "status": lobby["status"]
+                                "status": lobby["status"],
+                                "messages": lobby["messages"]
                             })
                             print(f"{username} left lobby {lobby_id}")
                             await websocket.send_json({"message": "Left lobby"})
@@ -500,26 +508,39 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
         
                     print(f"Registered {len(lobby['items'])} items in lobby {lobby_id}")
-
+                
                 elif action == "send_message":
                     lobby_id = message.get("lobby_id")
                     username = message.get("username")
-                    text = message.get("text")
-    
-                    if not lobby_id or not username or not text:
-                        await websocket.send_json({"error": "Missing required fields"})
+                    chat_message = message.get("message")
+                    
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
                         continue
-        
-                    if len(text) > 200:
-                        await websocket.send_json({"error": "Message too long"})
+                    
+                    if username not in lobby["players"]:
+                        await websocket.send_json({"error": "Player not in lobby"})
                         continue
-        
+                    
+                    if not chat_message or len(chat_message.strip()) == 0:
+                        await websocket.send_json({"error": "Message cannot be empty"})
+                        continue
+                    
+                    formatted_message = f"{username}: {chat_message}"
+                    lobby["messages"].append(formatted_message)
+                    print(f"Chat message from {username} in lobby {lobby_id}: {formatted_message}")
+                    
                     await notify_clients(lobby_id, {
                         "action": "chat_message",
                         "lobby_id": lobby_id,
                         "username": username,
-                        "text": text,
-                        "timestamp": int(time.time())
+                        "message": chat_message
                     })
                 
                 elif action == "ping":
@@ -555,7 +576,8 @@ async def handle_disconnect(websocket: WebSocket):
                                 await notify_clients(lobby_id, {
                                     "lobby_id": lobby_id,
                                     "players": lobby["players"],
-                                    "status": lobby["status"]
+                                    "status": lobby["status"],
+                                    "messages": lobby["messages"]
                                 })
                                 print(f"Removed {username} from lobby {lobby_id} due to disconnect")
             print(f"WebSocket client disconnected: {client_ip}")
