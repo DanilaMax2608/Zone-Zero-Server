@@ -47,7 +47,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "seed": 0,
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
-        "ready_players": []
+        "ready_players": [],
+        "messages": []
     }
     clients[lobby_id] = []
     
@@ -56,7 +57,8 @@ async def create_lobby(request: LobbyCreateRequest):
         "lobby_id": lobby_id,
         "creator": username,
         "players": [username],
-        "status": "waiting"
+        "status": "waiting",
+        "messages": []
     }
 
 @app.post("/join_lobby")
@@ -92,7 +94,8 @@ async def join_lobby(request: LobbyJoinRequest):
         "lobby_id": str(lobby["lobby_id"]),
         "creator": creator,
         "players": lobby["players"],
-        "status": "status"
+        "status": lobby["status"],
+        "messages": lobby["messages"]
     }
 
 @app.post("/start_game")
@@ -164,7 +167,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": 0,
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
-                        "ready_players": []
+                        "ready_players": [],
+                        "messages": []
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -172,7 +176,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "lobby_id": str(lobby_id),
                         "creator": username,
                         "players": [username],
-                        "status": "waiting"
+                        "status": "waiting",
+                        "messages": []
                     })
                     print(f"Created lobby {lobby_id} for {username}")
                 
@@ -212,6 +217,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         "status": "waiting"
                     })
                     print(f"{username} joined lobby {lobby['lobby_id']}")
+                    
+                    await websocket.send_json({
+                        "lobby_id": str(lobby["lobby_id"]),
+                        "creator": creator,
+                        "players": lobby["players"],
+                        "status": "waiting",
+                        "messages": lobby["messages"]
+                    })
                 
                 elif action == "start":
                     username = message.get("username")
