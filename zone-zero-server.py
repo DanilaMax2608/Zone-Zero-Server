@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from datetime import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Dict
@@ -499,6 +500,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
         
                     print(f"Registered {len(lobby['items'])} items in lobby {lobby_id}")
+
+                elif action == "send_message":
+                    lobby_id = message.get("lobby_id")
+                    username = message.get("username")
+                    text = message.get("text")
+    
+                    if not lobby_id or not username or not text:
+                        await websocket.send_json({"error": "Missing required fields"})
+                        continue
+        
+                    if len(text) > 200:
+                        await websocket.send_json({"error": "Message too long"})
+                        continue
+        
+                    await notify_clients(lobby_id, {
+                        "action": "chat_message",
+                        "lobby_id": lobby_id,
+                        "username": username,
+                        "text": text,
+                        "timestamp": int(time.time())
+                    })
                 
                 elif action == "ping":
                     username = message.get("username", f"Unknown_{client_ip}")
