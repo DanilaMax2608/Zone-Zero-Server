@@ -480,36 +480,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "speed_multiplier": 2.0
                                 })
 
-                elif action == "close_doors_event":
-                    lobby_id = message.get("lobby_id")
-                    username = message.get("username")
-                    doors = message.get("doors", [])
-                    duration = message.get("duration", 0.0)
-                    
-                    lobby = None
-                    for c, l in lobbies.items():
-                        if l["lobby_id"] == lobby_id:
-                            lobby = l
-                            break
-                    
-                    if not lobby:
-                        await websocket.send_json({"error": "Lobby not found"})
-                        continue
-                    
-                    if username != lobby["creator"]:
-                        await websocket.send_json({"error": "Only the creator can trigger door events"})
-                        continue
-                    
-                    print(f"Received close_doors_event from {username} in lobby {lobby_id}: {len(doors)} doors, duration={duration}")
-                    
-                    await notify_clients(lobby_id, {
-                        "action": "close_doors_event",
-                        "lobby_id": lobby_id,
-                        "username": username,
-                        "doors": doors,
-                        "duration": duration
-                    })
-
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
                     items = message.get("items", [])
