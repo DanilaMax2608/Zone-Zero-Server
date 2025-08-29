@@ -280,17 +280,13 @@ async def websocket_endpoint(websocket: WebSocket):
                             for client in clients[lobby_id]:
                                 if client != websocket: 
                                     try:
-                                        await client.send_json({
-                                            "action": "lobby_closed",
-                                            "lobby_id": lobby_id,
-                                            "message": "Lobby closed by creator"
-                                        })
+                                        await client.send_json({"error": "Lobby closed by creator"})
                                     except Exception as e:
                                         print(f"Error notifying client in lobby {lobby_id}: {e}")
                             del clients[lobby_id]
                         del lobbies[creator]
                         print(f"Lobby {lobby_id} deleted by creator {username}")
-                        await websocket.send_json({"action": "lobby_closed", "message": "Lobby closed"})
+                        await websocket.send_json({"message": "Lobby closed"})
                     else:
                         if username in lobby["players"]:
                             lobby["players"].remove(username)
@@ -570,15 +566,6 @@ async def handle_disconnect(websocket: WebSocket):
             for creator, lobby in list(lobbies.items()):
                 if lobby["lobby_id"] == lobby_id:
                     if not client_list:
-                        for client in client_list:
-                            try:
-                                await client.send_json({
-                                    "action": "lobby_closed",
-                                    "lobby_id": lobby_id,
-                                    "message": "Lobby closed due to creator disconnect"
-                                })
-                            except Exception as e:
-                                print(f"Error notifying client in lobby {lobby_id}: {e}")
                         del lobbies[creator]
                         print(f"Lobby {lobby_id} deleted due to no clients")
                     else:
