@@ -546,6 +546,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         "message": chat_message
                     })
                 
+                elif action == "get_lobbies":
+                    available_lobbies = [
+                        {
+                            "lobby_id": lobby["lobby_id"],
+                            "creator": creator,
+                            "current_players": len(lobby["players"]),
+                            "max_players": lobby["max_players"]
+                        }
+                        for creator, lobby in lobbies.items()
+                        if lobby["status"] == "waiting"
+                    ]
+                    await websocket.send_json({
+                        "action": "lobbies_list",
+                        "lobbies": available_lobbies
+                    })
+                    print(f"Sent {len(available_lobbies)} available lobbies to client {client_ip}")
+                
                 elif action == "ping":
                     username = message.get("username", f"Unknown_{client_ip}")
                     await websocket.send_json({"action": "pong"})
