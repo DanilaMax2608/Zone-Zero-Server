@@ -48,12 +48,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
         "ready_players": [],
-        "messages": [],
-        "bonus_durations": {  
-            "disable_control_others": 5.0,
-            "slow_others": 10.0,
-            "speed_up_others": 10.0
-        }
+        "messages": []
     }
     clients[lobby_id] = []
     
@@ -178,12 +173,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
                         "ready_players": [],
-                        "messages": [],
-                        "bonus_durations": {
-                            "disable_control_others": 5.0,
-                            "slow_others": 10.0,
-                            "speed_up_others": 10.0
-                        }
+                        "messages": []
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -489,7 +479,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
     
                     if bonus_type == "disable_control_others":
-                        duration = lobby.get("bonus_durations", {}).get("disable_control_others", 5.0)
+                        duration = lobby.get("bonus_durations", {}).get("disable_control_others")
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
@@ -500,7 +490,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                     
                     elif bonus_type == "slow_others":
-                        duration = lobby.get("bonus_durations", {}).get("slow_others", 10.0)
+                        duration = lobby.get("bonus_durations", {}).get("slow_others")
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
@@ -512,7 +502,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                     
                     elif bonus_type == "speed_up_others":
-                        duration = lobby.get("bonus_durations", {}).get("speed_up_others", 10.0)
+                        duration = lobby.get("bonus_durations", {}).get("speed_up_others")
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
