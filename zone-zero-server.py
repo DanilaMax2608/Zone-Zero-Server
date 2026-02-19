@@ -48,7 +48,16 @@ async def create_lobby(request: LobbyCreateRequest):
         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
         "items": {},
         "ready_players": [],
-        "messages": []
+        "messages": [],
+        "bonus_durations": { 
+            "disable_control_others": 5.0,
+            "slow_others": 5.0,
+            "speed_up_others": 5.0
+        },
+        "bonus_multipliers": {  
+            "slow_multiplier": 0.5,
+            "speed_up_multiplier": 2.0
+        }
     }
     clients[lobby_id] = []
     
@@ -173,7 +182,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         "positions": {username: {"x": 0.0, "y": 0.0, "z": 0.0}},
                         "items": {},
                         "ready_players": [],
-                        "messages": []
+                        "messages": [],
+                        "bonus_durations": {
+                            "disable_control_others": 5.0,
+                            "slow_others": 5.0,
+                            "speed_up_others": 5.0
+                        },
+                        "bonus_multipliers": {
+                            "slow_multiplier": 0.5,
+                            "speed_up_multiplier": 2.0
+                        }
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -483,8 +501,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         "bonus_type": bonus_type
                     })
     
+                    bonus_durations = lobby.get("bonus_durations", {})
+                    bonus_multipliers = lobby.get("bonus_multipliers", {})
+    
                     if bonus_type == "disable_control_others":
-                        duration = lobby.get("bonus_durations", {}).get("disable_control_others")
+                        duration = bonus_durations.get("disable_control_others")
+                        if duration is None:  
+                            duration = 5.0
+                            print(f"Warning: disable_control_others duration not found, using default: {duration}")
+                        
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
@@ -495,8 +520,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                     
                     elif bonus_type == "slow_others":
-                        duration = lobby.get("bonus_durations", {}).get("slow_others")
-                        speed_multiplier = lobby.get("bonus_multipliers", {}).get("slow_multiplier")
+                        duration = bonus_durations.get("slow_others")
+                        if duration is None:
+                            duration = 5.0
+                            print(f"Warning: slow_others duration not found, using default: {duration}")
+                        
+                        speed_multiplier = bonus_multipliers.get("slow_multiplier")
+                        if speed_multiplier is None:
+                            speed_multiplier = 0.5
+                            print(f"Warning: slow_multiplier not found, using default: {speed_multiplier}")
+                        
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
@@ -508,8 +541,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                     
                     elif bonus_type == "speed_up_others":
-                        duration = lobby.get("bonus_durations", {}).get("speed_up_others")
-                        speed_multiplier = lobby.get("bonus_multipliers", {}).get("speed_up_multiplier")
+                        duration = bonus_durations.get("speed_up_others")
+                        if duration is None:
+                            duration = 5.0
+                            print(f"Warning: speed_up_others duration not found, using default: {duration}")
+                        
+                        speed_multiplier = bonus_multipliers.get("speed_up_multiplier")
+                        if speed_multiplier is None:
+                            speed_multiplier = 2.0
+                            print(f"Warning: speed_up_multiplier not found, using default: {speed_multiplier}")
+                        
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
