@@ -245,7 +245,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     username = message.get("username")
                     lobby_id = message.get("lobby_id")
                     seed = message.get("seed", 0)
-                    bonus_durations = message.get("bonus_durations")
                     
                     lobby = None
                     creator = None
@@ -263,10 +262,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"error": "Only the creator can start the game"})
                         continue
                     
-                    if bonus_durations:
-                        lobby["bonus_durations"] = bonus_durations
-                        print(f"Received bonus durations: {bonus_durations}")
-                    
                     lobby["status"] = "started"
                     lobby["seed"] = seed
                     
@@ -277,7 +272,31 @@ async def websocket_endpoint(websocket: WebSocket):
                         "seed": seed,
                         "items": lobby["items"]
                     })
-                    print(f"Game started in lobby {lobby_id} with seed {seed}, generated {len(lobby['items'])} items")
+                    print(f"Game started in lobby {lobby_id} with seed {seed}")
+                
+                elif action == "set_bonus_durations":  
+                    username = message.get("username")
+                    lobby_id = message.get("lobby_id")
+                    bonus_durations = message.get("bonus_durations")
+                    
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+                    
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+                    
+                    if username not in lobby["players"]:
+                        await websocket.send_json({"error": "Player not in lobby"})
+                        continue
+                    
+                    if bonus_durations:
+                        lobby["bonus_durations"] = bonus_durations
+                        print(f"Updated bonus durations for lobby {lobby_id}: {bonus_durations}")
+                        await websocket.send_json({"message": "Bonus durations updated"})
                 
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
