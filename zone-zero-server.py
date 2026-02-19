@@ -406,6 +406,38 @@ async def websocket_endpoint(websocket: WebSocket):
                         "scores": lobby["scores"]
                     })
 
+                elif action == "set_bonus_durations":
+                    lobby_id = message.get("lobby_id")
+                    username = message.get("username")
+                    durations = message.get("durations", {})
+
+                    lobby = None
+                    for c, l in lobbies.items():
+                        if l["lobby_id"] == lobby_id:
+                            lobby = l
+                            break
+
+                    if not lobby:
+                        await websocket.send_json({"error": "Lobby not found"})
+                        continue
+
+                    if username != lobby["creator"]:
+                        await websocket.send_json({"error": "Only creator can set bonus durations"})
+                        continue
+
+                    lobby["bonus_durations"] = {
+                        "disable_control_others": durations.get("disable_control_others", 5.0),
+                        "slow_others": durations.get("slow_others", 10.0),
+                        "speed_up_others": durations.get("speed_up_others", 10.0),
+                    }
+
+                    print(f"Creator {username} set bonus durations in lobby {lobby_id}: {lobby['bonus_durations']}")
+
+                    await notify_clients(lobby_id, {
+                        "action": "bonus_durations_updated",
+                        "durations": lobby["bonus_durations"]
+                    })
+
                 elif action == "collect_bonus":
                     lobby_id = message.get("lobby_id")
                     username = message.get("username")
@@ -440,7 +472,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
                     lobby["items"][item_id]["collected"] = True
                     print(f"Bonus item {item_id} collected by {username} in lobby {lobby_id}, bonus_type: {bonus_type}")
-    
+
                     await notify_clients(lobby_id, {
                         "action": "item_collected",
                         "lobby_id": lobby_id,
@@ -448,37 +480,43 @@ async def websocket_endpoint(websocket: WebSocket):
                         "username": username,
                         "bonus_type": bonus_type
                     })
-    
+
+                    durations = lobby.get("bonus_durations", {})
+
                     if bonus_type == "disable_control_others":
+                        duration = durations.get("disable_control_others", 5.0)
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
                                     "effect_type": "disable_control",
                                     "target_username": player,
-                                    "duration": 5  
+                                    "duration": duration
                                 })
 
-                    if bonus_type == "slow_others":
+                    elif bonus_type == "slow_others":
+                        duration = durations.get("slow_others", 10.0)
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
-                                    "effect_type": "slow_others",
+                                    "effect_type": "slow",
                                     "target_username": player,
-                                    "duration": 10,
+                                    "duration": duration,
                                     "speed_multiplier": 0.5
                                 })
-                    if bonus_type == "speed_up_others":
+
+                    elif bonus_type == "speed_up_others":
+                        duration = durations.get("speed_up_others", 10.0)
                         for player in lobby["players"]:
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
-                                    "effect_type": "speed_up_others",
+                                    "effect_type": "speed_up",
                                     "target_username": player,
-                                    "duration": 10,
+                                    "duration": duration,
                                     "speed_multiplier": 2.0
-                                })
+                })
 
                 elif action == "register_items":
                     lobby_id = message.get("lobby_id")
