@@ -489,7 +489,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
-                                    "effect_type": "disable_control",
+                                    "effect_type": "disable_control_others",
                                     "target_username": player,
                                     "duration": duration
                                 })
@@ -500,7 +500,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
-                                    "effect_type": "slow",
+                                    "effect_type": "slow_others",
                                     "target_username": player,
                                     "duration": duration,
                                     "speed_multiplier": 0.5
@@ -512,7 +512,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if player != username:
                                 await notify_clients(lobby_id, {
                                     "action": "apply_effect",
-                                    "effect_type": "speed_up",
+                                    "effect_type": "speed_up_others",
                                     "target_username": player,
                                     "duration": duration,
                                     "speed_multiplier": 2.0
