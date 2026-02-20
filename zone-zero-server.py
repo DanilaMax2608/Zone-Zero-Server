@@ -361,11 +361,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     remaining = get_remaining_time(lobby)
+                    
                     await websocket.send_json({
                         "action": "time_update",
                         "lobby_id": lobby_id,
                         "time_remaining": remaining,
-                        "game_ended": lobby.get("game_ended", False)
+                        "game_ended": lobby.get("game_ended", False),
+                        "game_start_time": lobby.get("game_start_time", 0)
                     })
                 
                 elif action == "leave":
@@ -739,20 +741,46 @@ async def start_game_timer(lobby_id: str, duration: float):
     if not lobby:
         return
     
-    lobby["game_start_time"] = time.time()
+    current_time = time.time()
+    lobby["game_start_time"] = current_time
     lobby["game_duration"] = duration
     lobby["game_ended"] = False
+    
+    await notify_clients(lobby_id, {
+        "action": "timer_started",
+        "lobby_id": lobby_id,
+        "duration": duration,
+        "start_time": current_time
+    })
     
     task = asyncio.create_task(game_timer_loop(lobby_id, duration))
     timer_tasks[lobby_id] = task
 
 async def game_timer_loop(lobby_id: str, duration: float):
     try:
-        start_time = time.time()
+        lobby = None
+        for c, l in lobbies.items():
+            if l["lobby_id"] == lobby_id:
+                lobby = l
+                break
+        
+        if not lobby:
+            return
+        
+        start_time = lobby["game_start_time"]
         end_time = start_time + duration
         
         while time.time() < end_time:
             await asyncio.sleep(1)
+            
+            lobby = None
+            for c, l in lobbies.items():
+                if l["lobby_id"] == lobby_id:
+                    lobby = l
+                    break
+            
+            if not lobby or lobby.get("game_ended", False):
+                break
             
             remaining = max(0, end_time - time.time())
             
@@ -763,7 +791,8 @@ async def game_timer_loop(lobby_id: str, duration: float):
                 "game_ended": False
             })
         
-        await end_game(lobby_id)
+        if lobby and not lobby.get("game_ended", False):
+            await end_game(lobby_id)
         
     except asyncio.CancelledError:
         print(f"Timer for lobby {lobby_id} was cancelled")
