@@ -5,14 +5,11 @@ from typing import List, Dict, Optional
 import uuid
 import json
 import random
-import asyncio
-import time
 
 app = FastAPI()
 
 lobbies: Dict[str, dict] = {}
 clients: Dict[str, List[WebSocket]] = {}
-timer_tasks: Dict[str, asyncio.Task] = {} 
 
 class LobbyCreateRequest(BaseModel):
     username: str
@@ -60,10 +57,7 @@ async def create_lobby(request: LobbyCreateRequest):
         "bonus_multipliers": {  
             "slow_multiplier": 0.5,
             "speed_up_multiplier": 2.0
-        },
-        "game_start_time": None, 
-        "game_duration": None,    
-        "game_ended": False        
+        }
     }
     clients[lobby_id] = []
     
@@ -197,10 +191,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "bonus_multipliers": {
                             "slow_multiplier": 0.5,
                             "speed_up_multiplier": 2.0
-                        },
-                        "game_start_time": None,
-                        "game_duration": None,
-                        "game_ended": False
+                        }
                     }
                     clients[lobby_id] = [websocket]
                     
@@ -320,56 +311,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"Updated bonus data for lobby {lobby_id}: durations={bonus_durations}, multipliers={bonus_multipliers}")
                     await websocket.send_json({"message": "Bonus data updated"})
                 
-                elif action == "start_timer": 
-                    username = message.get("username")
-                    lobby_id = message.get("lobby_id")
-                    duration = message.get("duration")  
-                    
-                    lobby = None
-                    for c, l in lobbies.items():
-                        if l["lobby_id"] == lobby_id:
-                            lobby = l
-                            break
-                    
-                    if not lobby:
-                        await websocket.send_json({"error": "Lobby not found"})
-                        continue
-                    
-                    if username not in lobby["players"]:
-                        await websocket.send_json({"error": "Player not in lobby"})
-                        continue
-                    
-                    await start_game_timer(lobby_id, duration)
-                    await websocket.send_json({"message": "Timer started"})
-                
-                elif action == "request_time":  
-                    username = message.get("username")
-                    lobby_id = message.get("lobby_id")
-                    
-                    lobby = None
-                    for c, l in lobbies.items():
-                        if l["lobby_id"] == lobby_id:
-                            lobby = l
-                            break
-                    
-                    if not lobby:
-                        await websocket.send_json({"error": "Lobby not found"})
-                        continue
-                    
-                    if username not in lobby["players"]:
-                        await websocket.send_json({"error": "Player not in lobby"})
-                        continue
-                    
-                    remaining = get_remaining_time(lobby)
-                    
-                    await websocket.send_json({
-                        "action": "time_update",
-                        "lobby_id": lobby_id,
-                        "time_remaining": remaining,
-                        "game_ended": lobby.get("game_ended", False),
-                        "game_start_time": lobby.get("game_start_time", 0)
-                    })
-                
                 elif action == "leave":
                     lobby_id = message.get("lobby_id")
                     username = message.get("username")
@@ -387,10 +328,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     if username == lobby["creator"]:
-                        if lobby_id in timer_tasks:
-                            timer_tasks[lobby_id].cancel()
-                            del timer_tasks[lobby_id]
-                        
                         if lobby_id in clients:
                             for client in clients[lobby_id]:
                                 if client != websocket:
@@ -470,9 +407,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"error": "Player not in lobby"})
                         continue
                     
-                    if lobby.get("game_ended", False):
-                        continue
-                    
                     lobby["positions"][username] = {"x": x, "y": y, "z": z}
                     print(f"Updated position for {username} in lobby {lobby_id}: x={x}, y={y}, z={z}")
                     
@@ -510,9 +444,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     if lobby["items"][item_id]["collected"]:
                         await websocket.send_json({"error": "Item already collected"})
-                        continue
-                    
-                    if lobby.get("game_ended", False):
                         continue
                     
                     lobby["items"][item_id]["collected"] = True
@@ -557,9 +488,6 @@ async def websocket_endpoint(websocket: WebSocket):
     
                     if lobby["items"][item_id]["collected"]:
                         await websocket.send_json({"error": "Bonus item already collected"})
-                        continue
-                    
-                    if lobby.get("game_ended", False):
                         continue
     
                     lobby["items"][item_id]["collected"] = True
@@ -728,110 +656,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         await handle_disconnect(websocket)
 
-async def start_game_timer(lobby_id: str, duration: float):
-    if lobby_id in timer_tasks:
-        timer_tasks[lobby_id].cancel()
-    
-    lobby = None
-    for c, l in lobbies.items():
-        if l["lobby_id"] == lobby_id:
-            lobby = l
-            break
-    
-    if not lobby:
-        return
-    
-    current_time = time.time()
-    lobby["game_start_time"] = current_time
-    lobby["game_duration"] = duration
-    lobby["game_ended"] = False
-    
-    await notify_clients(lobby_id, {
-        "action": "timer_started",
-        "lobby_id": lobby_id,
-        "duration": duration,
-        "start_time": current_time
-    })
-    
-    task = asyncio.create_task(game_timer_loop(lobby_id, duration))
-    timer_tasks[lobby_id] = task
-
-async def game_timer_loop(lobby_id: str, duration: float):
-    try:
-        lobby = None
-        for c, l in lobbies.items():
-            if l["lobby_id"] == lobby_id:
-                lobby = l
-                break
-        
-        if not lobby:
-            return
-        
-        start_time = lobby["game_start_time"]
-        end_time = start_time + duration
-        
-        while time.time() < end_time:
-            await asyncio.sleep(1)
-            
-            lobby = None
-            for c, l in lobbies.items():
-                if l["lobby_id"] == lobby_id:
-                    lobby = l
-                    break
-            
-            if not lobby or lobby.get("game_ended", False):
-                break
-            
-            remaining = max(0, end_time - time.time())
-            
-            await notify_clients(lobby_id, {
-                "action": "time_update",
-                "lobby_id": lobby_id,
-                "time_remaining": remaining,
-                "game_ended": False
-            })
-        
-        if lobby and not lobby.get("game_ended", False):
-            await end_game(lobby_id)
-        
-    except asyncio.CancelledError:
-        print(f"Timer for lobby {lobby_id} was cancelled")
-    except Exception as e:
-        print(f"Error in game timer loop for lobby {lobby_id}: {e}")
-
-async def end_game(lobby_id: str):
-    lobby = None
-    for c, l in lobbies.items():
-        if l["lobby_id"] == lobby_id:
-            lobby = l
-            break
-    
-    if not lobby:
-        return
-    
-    lobby["game_ended"] = True
-    
-    if lobby_id in timer_tasks:
-        del timer_tasks[lobby_id]
-    
-    await notify_clients(lobby_id, {
-        "action": "game_ended",
-        "lobby_id": lobby_id
-    })
-    
-    print(f"Game ended in lobby {lobby_id}")
-
-def get_remaining_time(lobby: dict) -> float:
-    if not lobby.get("game_start_time") or not lobby.get("game_duration"):
-        return 0
-    
-    if lobby.get("game_ended"):
-        return 0
-    
-    elapsed = time.time() - lobby["game_start_time"]
-    remaining = max(0, lobby["game_duration"] - elapsed)
-    return remaining
-
 async def handle_disconnect(websocket: WebSocket):
     client_ip = websocket.client.host
     for lobby_id, client_list in list(clients.items()):
@@ -840,9 +664,6 @@ async def handle_disconnect(websocket: WebSocket):
             for creator, lobby in list(lobbies.items()):
                 if lobby["lobby_id"] == lobby_id:
                     if not client_list:
-                        if lobby_id in timer_tasks:
-                            timer_tasks[lobby_id].cancel()
-                            del timer_tasks[lobby_id]
                         del lobbies[creator]
                         print(f"Lobby {lobby_id} deleted due to no clients")
                     else:
